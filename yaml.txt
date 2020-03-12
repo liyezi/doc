@@ -1,0 +1,407 @@
+
+inputs:
+  web-console-image: {default: '.cn-north-1.myhuaweicloud.com//account-:0329',
+    label: images}
+  product-manager-image: {default: '.cn-north-1.myhuaweicloud.com//-:0329',
+    label: images}
+  scene-init-image: {default: '.cn-north-1.myhuaweicloud.com//-:0329',
+    label: images}
+  database-controller-image: {default: '.cn-north-1.myhuaweicloud.com//edge-:0411',
+    label: images}
+  runtobuy-processor-image: {default: '.cn-north-1.myhuaweicloud.com//init-db:0329',
+    label: images}
+  application-id: {default: fruit-shop}
+  image-pull-policy: {default: IfNotPresent}
+  monitoring-group: {default: fruit-shop}
+  shop-nodeport: {default: 30888, type: integer}
+  instance: {default: 1, type: integer}
+  database-name: {default: "account_db", type: string}
+  db-pwd: {default: "1@1", type: string}
+  cm-cse-credential: {default: "cse-credential", type: string}
+  VpcId:
+    default: 1-2a03-4a31-84ae-3
+  SecurityGroupId:
+    default: "Please update as CCE securityGroup Name, which contain cce-node"
+  SubnetId:
+    default: 1-e391-411a-3-face404b17bd
+  availabilityZone:
+    default: cn-north-1a
+
+  dcsDescription:
+    default: dcs 
+    label: dcs
+  dcsCapacity:
+    default: 4
+    label: dcs
+  dcsPassword:
+    default: Huawei@12345
+    type: password
+    label: dcs
+  dcsInstanceMode:
+    default: "single"
+    label: dcs
+  dcsSavedays:
+    default: 1
+    label: dcs
+  dcsBackuptype:
+    default: auto
+    label: dcs
+  dcsBackupbeginat:
+    default: "00"
+    label: dcs
+  dcsPeriodtype:
+    default: "weekly"
+    label: dcs
+
+  datastoreType:
+    default: MySQL
+    label: rds
+  datastoreVersion:
+    default: 5.7.17
+    label: rds
+  rds-flavorRef:
+    default: 18207182-0c02-467f-ae05-3
+    label: rds
+  volumeType:
+    default: COMMON
+    label: rds
+  volumeSize:
+    default: 100
+    label: rds
+  dbuser:
+    default: root
+    label: rds
+  dbRtPd:
+    default: Huawei@12345
+    type: password
+    label: rds
+  haEnable:
+    default: "false"
+    label: rds
+  replicMode:
+    default: async
+    label: rds
+  startTime:
+    default: "12:00"
+    label: rds
+  keepDays:
+    default: 1
+    label: rds
+
+node_templates:
+  fruitshop-dcs:
+    type: HuaweiCloud.DCS.Redis
+    properties:
+      description: {get_input: dcsDescription}
+      capacity: {get_input: dcsCapacity}
+      vpcId: {get_input: VpcId}
+      securityGroupId: {get_input: SecurityGroupId}
+      subnetId: {get_input: SubnetId}
+      password: {get_input: dcsPassword}
+      instanceMode: {get_input: dcsInstanceMode}
+
+  fruitshop-rds:
+    type: HuaweiCloud.RDS.MySQL
+    properties:
+      dataStore:
+        dbtype: {get_input: datastoreType}
+        version: {get_input: datastoreVersion}
+      flavor: {get_input: rds-flavorRef}
+      volume:
+        volumetype: {get_input: volumeType}
+        size: {get_input: volumeSize}
+      availabilityZone: {get_input: availabilityZone}
+      vpcId: {get_input: VpcId}
+      subnetId: {get_input: SubnetId}
+      securityGroupId: {get_input: SecurityGroupId}
+      dbRootPassword: {get_input: dbRtPd}
+      HA:
+        enable: {get_input: haEnable}
+        replicationMode: {get_input: replicMode}
+      backupStrategy:
+        startTime: {get_input: startTime}
+        keepDays:  {get_input: keepDays}
+
+  account-:
+    properties:
+      k8sManifest:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          labels:
+            stack: {get_input: HuaweiCloud.StackName}
+            app: account-
+          name: 
+            concat:
+              - account--
+              - get_input: HuaweiCloud.StackName
+        spec:
+          replicas: {get_input: instance}
+          selector:
+            matchLabels:
+              stack: {get_input: HuaweiCloud.StackName}
+              app: account-
+          template:
+            metadata:
+              labels:
+                stack: {get_input: HuaweiCloud.StackName}
+                app: account-
+            spec:
+              containers:
+                - env:
+                    - name: APPLICATION_ID
+                      value: {get_input: application-id}
+                    - name: TCC_REDIS_HOST
+                      value: {get_attribute: [house-dcs,refIP]} 
+                    - name: TCC_REDIS_PORT
+                      value: {get_attribute: [house-dcs,refPort]} 
+                    - name: TCC_REDIS_PASSWD
+                      value: {get_input: dcsPassword}
+                    - name: DB_HOST
+                      value: {get_attribute: [house-rds,refIP]} 
+                    - name: DB_PORT
+                      value: {get_attribute: [house-rds,refPort]}
+                    - name: DB_NAME
+                      value: {get_input: accountdb-name}
+                    - name: DB_USERNAME
+                      value: {get_input: dbuser}
+                    - name: DB_PASSWD
+                      value: {get_input: db-pwd}
+                  image: {get_input: account--image}
+                  imagePullPolicy: {get_input: image-pull-policy}
+                  name: account-
+                  resources:
+                    requests:
+                      cpu: 0.2
+                      memory: 300Mi
+                    limits:
+                      cpu: 1
+                      memory: 2000Mi
+              imagePullSecrets:
+                - name: default-secret
+    requirements:
+    - dependency: {node: init-accountdb}
+    - dependency: {node: house-dcs}
+    - dependency: {node: house-rds}
+    type: HuaweiCloud.CCE.Deployment
+
+  -:
+    properties:
+      k8sManifest:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          labels:
+            stack: {get_input: HuaweiCloud.StackName}
+            app: -
+          name: 
+            concat:
+              - --
+              - get_input: HuaweiCloud.StackName
+        spec:
+          replicas: {get_input: instance}
+          selector:
+            matchLabels:
+              stack: {get_input: HuaweiCloud.StackName}
+              app: -
+          template:
+            metadata:
+              labels:
+                stack: {get_input: HuaweiCloud.StackName}
+                app: -
+            spec:
+              containers:
+                - env:
+                    - name: APPLICATION_ID
+                      value: {get_input: application-id}
+                    - name: TCC_REDIS_HOST
+                      value: {get_attribute: [house-dcs,refIP]} 
+                    - name: TCC_REDIS_PORT
+                      value: {get_attribute: [house-dcs,refPort]} 
+                    - name: TCC_REDIS_PASSWD
+                      value: {get_input: dcsPassword}
+                  image: {get_input: --image}
+                  imagePullPolicy: {get_input: image-pull-policy}
+                  name: -
+                  volumeMounts:
+                    - mountPath: /opt/CSE/etc/cipher
+                      name: cm-cse-credential
+                  resources:
+                    requests:
+                      cpu: 0.2
+                      memory: 300Mi
+                    limits:
+                      cpu: 1
+                      memory: 2000Mi
+              imagePullSecrets:
+                - name: default-secret
+              volumes:
+                - name: cm-cse-credential
+                  configMap:
+                    name: {get_input: cm-cse-credential}
+    requirements:
+    - dependency: {node: house-dcs}
+    type: HuaweiCloud.CCE.Deployment
+
+  -:
+    properties:
+      k8sManifest:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          labels:
+            stack: {get_input: HuaweiCloud.StackName}
+            app: -
+          name: 
+            concat:
+              - --
+              - get_input: HuaweiCloud.StackName
+        spec:
+          replicas: {get_input: instance}
+          selector:
+            matchLabels:
+              stack: {get_input: HuaweiCloud.StackName}
+              app: -
+          template:
+            metadata:
+              labels:
+                stack: {get_input: HuaweiCloud.StackName}
+                app: -
+            spec:
+              containers:
+                - env:
+                    - name: APPLICATION_ID
+                      value: {get_input: application-id}
+                  image: {get_input: --image}
+                  imagePullPolicy: {get_input: image-pull-policy}
+                  name: -
+                  volumeMounts:
+                    - mountPath: /opt/CSE/etc/cipher
+                      name: cm-cse-credential
+                  resources:
+                    requests:
+                      cpu: 0.2
+                      memory: 300Mi
+                    limits:
+                      cpu: 1
+                      memory: 2000Mi
+              imagePullSecrets:
+                - name: default-secret
+              volumes:
+                - name: cm-cse-credential
+                  configMap:
+                    name: {get_input: cm-cse-credential}
+    type: HuaweiCloud.CCE.Deployment
+
+  edge-:
+    properties:
+      k8sManifest:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          labels:
+            stack: {get_input: HuaweiCloud.StackName}
+            app: edge-
+          name: 
+            concat:
+              - edge--
+              - get_input: HuaweiCloud.StackName
+        spec:
+          replicas: {get_input: instance}
+          selector:
+            matchLabels:
+              stack: {get_input: HuaweiCloud.StackName}
+              app: edge-
+          template:
+            metadata:
+              labels:
+                stack: {get_input: HuaweiCloud.StackName}
+                app: edge-
+            spec:
+              containers:
+                - env:
+                    - name: APPLICATION_ID
+                      value: {get_input: application-id}
+                  image: {get_input: edge--image}
+                  imagePullPolicy: {get_input: image-pull-policy}
+                  name: edge-
+                  volumeMounts:
+                    - mountPath: /opt/CSE/etc/cipher
+                      name: cm-cse-credential
+                  ports:  
+                    - containerPort: 18080
+                      name: httpd
+                      protocol: TCP
+                  resources:
+                    limits: {cpu: 1, memory: 2000Mi}
+                    requests: {cpu: 0.3, memory: 300Mi}
+              imagePullSecrets:
+                - name: default-secret
+              volumes:
+                - name: cm-cse-credential
+                  configMap:
+                    name: {get_input: cm-cse-credential}
+    type: HuaweiCloud.CCE.Deployment
+
+  edge--accessor:
+    properties:
+      k8sManifest:
+        apiVersion: v1
+        kind: 
+        metadata:
+          name: 
+            concat:
+              - edge--
+              - get_input: HuaweiCloud.StackName
+          labels:
+            stack:
+              get_input: HuaweiCloud.StackName
+            app: 
+              get_attribute: 
+              - edge-
+              - refName
+        spec:
+          ports:
+            - nodePort: {get_input: nodeport}
+              port: 18080
+              targetPort: 18080
+          selector:
+            stack:
+              get_input: HuaweiCloud.StackName
+            app: edge-
+          type: NodePort
+    requirements:
+    - dependency: {node: edge-}
+    type: HuaweiCloud.CCE.
+
+    
+outputs:
+  dcs-IP:
+    value:
+      get_attribute: [house-dcs,refIP]
+  dcs-port:
+    value:
+      get_attribute: [house-dcs,refPort]
+  dcs-name:
+    value:
+      get_attribute: [house-dcs,refName]
+  rds-IP:
+    value:
+      get_attribute: [house-rds,refIP]
+  rds-port:
+    value:
+      get_attribute: [house-rds,refPort]
+      
+policies:
+  account-policies:
+    properties:
+      name: {get_input: monitoring-group}
+    targets: [account-]
+    type: HuaweiCloud.APM.Pinpoint
+  -policies:
+    properties:
+      name: {get_input: monitoring-group}
+    targets: [-]
+    type: HuaweiCloud.APM.Pinpoint
+
+tosca_definitions_version: huaweicloud_tosca_version_1_0
